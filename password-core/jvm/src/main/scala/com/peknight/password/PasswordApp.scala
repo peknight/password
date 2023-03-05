@@ -2,7 +2,6 @@ package com.peknight.password
 
 import cats.data.*
 import cats.syntax.applicative.*
-import cats.syntax.traverse.*
 import cats.syntax.either.*
 import cats.syntax.flatMap.*
 import cats.syntax.functor.*
@@ -10,8 +9,9 @@ import cats.syntax.option.*
 import cats.syntax.traverse.*
 import cats.syntax.validated.*
 import cats.syntax.writer.*
-import cats.{FlatMap, Functor, Monad, Semigroup}
+import cats.{FlatMap, Functor, Monad, Order, Semigroup}
 import com.peknight.cats.ext.monad.transformer.writer.WriterIdT
+import com.peknight.error.collection.CollectionEmptyError
 import com.peknight.error.spire.math.interval.BoundEmptyError
 import com.peknight.error.{Error, UndefinedError}
 import com.peknight.random.Random
@@ -135,18 +135,16 @@ object PasswordApp extends App:
    * 总长度10
    * 0-5，0-2，0-3，0-1
    */
-  def lengths[F[_] : Monad, K](length: Interval[Int], elements: Map[K, Interval[Int]])
-  : ValidatedNel[Error, StateT[F, Random[F], Map[K, Int]]] =
-    elements.toList.traverse { case (k, interval) => checkLength(interval).map((k, _)).toValidatedNel } map { list =>
-      val map: Map[K, (Int, Option[Int])] = list.toMap
+  def lengths[F[_] : Monad, K : Order](length: Interval[Int], elements: Map[K, Interval[Int]])
+  : Either[NonEmptyList[Error], StateT[F, Random[F], Map[K, Int]]] =
+    val elementList = elements.toList
+    NonEmptyList.fromList(elementList) match
+      case Some(nel) => nel.traverse { case (k, interval) => checkLength(interval).map((k, _)).toValidatedNel }.toEither.flatMap { nel =>
+        val map: NonEmptyMap[K, (Int, Option[Int])] = nel.toNem
 
-
-    }
-
-    ???
-
-
-
+        ???
+      }
+      case _ => NonEmptyList.one(CollectionEmptyError("elements")).asLeft[StateT[F, Random[F], Map[K, Int]]]
 
   def checkLowerBound(lowerBound: Bound[Int]): Either[Error, Int] =
     val label = "lower bound"
