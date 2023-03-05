@@ -1,16 +1,29 @@
 package com.peknight.password
 
-import cats.data.{NonEmptyList, StateT, Validated}
+import cats.data.*
+import cats.syntax.applicative.*
+import cats.syntax.traverse.*
+import cats.syntax.either.*
 import cats.syntax.flatMap.*
 import cats.syntax.functor.*
+import cats.syntax.option.*
 import cats.syntax.traverse.*
 import cats.syntax.validated.*
-import cats.{Functor, Monad}
+import cats.syntax.writer.*
+import cats.{FlatMap, Functor, Monad, Semigroup}
+import com.peknight.cats.ext.monad.transformer.writer.WriterIdT
+import com.peknight.error.spire.math.interval.BoundEmptyError
+import com.peknight.error.{Error, UndefinedError}
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.random.state.*
+import com.peknight.spire.ext.syntax.bound.get
+import com.peknight.validation.spire.math.interval.id.either.IntervalValidation.*
 import spire.math.*
 import spire.math.interval.*
+
+import scala.collection.BuildFrom
+import scala.compiletime.{constValue, erasedValue}
 
 object PasswordApp extends App:
 
@@ -114,3 +127,45 @@ object PasswordApp extends App:
   println(Vector(1, 2, 3, 4).splitAt(4))
   println(Vector(1, 2, 3, 4).splitAt(5))
 
+
+  // -----------------------------
+
+  /**
+   * 最大长度剩余量
+   * 总长度10
+   * 0-5，0-2，0-3，0-1
+   */
+  def lengths[F[_] : Monad, K](length: Interval[Int], elements: Map[K, Interval[Int]])
+  : ValidatedNel[Error, StateT[F, Random[F], Map[K, Int]]] =
+    elements.toList.traverse { case (k, interval) => checkLength(interval).map((k, _)).toValidatedNel } map { list =>
+      val map: Map[K, (Int, Option[Int])] = list.toMap
+
+
+    }
+
+    ???
+
+
+
+
+  def checkLowerBound(lowerBound: Bound[Int]): Either[Error, Int] =
+    val label = "lower bound"
+    lowerBound match
+      case bound: ValueBound[Int] => nonNegative(bound.get(true), label)
+      case Unbound() => 0.asRight[Error]
+      case EmptyBound() => BoundEmptyError(label).asLeft[Int]
+
+  def checkUpperBound(upperBound: Bound[Int], lower: Int): Either[Error, Option[Int]] =
+    val label = "upper bound"
+    upperBound match
+      case bound: ValueBound[Int] => atOrAbove(bound.get(false), label, lower).map(_.some)
+      case Unbound() => none[Int].asRight[Error]
+      case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
+
+  type LengthInterval = (Int, Option[Int])
+
+  def checkLength(length: Interval[Int]): Either[Error, LengthInterval] =
+    for
+      lower <- checkLowerBound(length.lowerBound)
+      upperOption <- checkUpperBound(length.upperBound, lower)
+    yield (lower, upperOption)
