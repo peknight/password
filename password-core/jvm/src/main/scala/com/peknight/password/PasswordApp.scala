@@ -9,16 +9,18 @@ import cats.syntax.option.*
 import cats.syntax.traverse.*
 import cats.syntax.validated.*
 import cats.syntax.writer.*
-import cats.{FlatMap, Functor, Monad, Order, Semigroup}
+import cats.{FlatMap, Functor, Id, Monad, Order, Semigroup}
 import com.peknight.cats.ext.monad.transformer.writer.WriterIdT
 import com.peknight.error.collection.CollectionEmptyError
-import com.peknight.error.spire.math.interval.BoundEmptyError
+import com.peknight.error.spire.math.IntervalEmptyError
+import com.peknight.error.spire.math.interval.{BoundEmptyError, UnboundError}
 import com.peknight.error.{Error, UndefinedError}
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.random.state.*
 import com.peknight.spire.ext.syntax.bound.get
-import com.peknight.validation.spire.math.interval.id.either.IntervalValidation.*
+import com.peknight.validation.collection.list.either.*
+import com.peknight.validation.spire.math.interval.either.*
 import spire.math.*
 import spire.math.interval.*
 
@@ -43,108 +45,47 @@ object PasswordApp extends App:
     def next[F[_] : Monad]: StateT[F, Random[F], Char] = CharGen[A].next(a)
   end extension
 
-  def toPair(len: Interval[Int]): (Int, Option[Int]) =
-    val lower = len.lowerBound match
-      case Closed(a) => a max 0
-      case Open(a) => (a + 1) max 0
-      case _ => 0
-    len.upperBound match
-      case Unbound() => (lower, None)
-      case Closed(a) if lower <= a => (lower, Some(a))
-      case Open(a) if lower <= a - 1 => (lower, Some(a - 1))
-      case _ => (0, Some(0))
-  end toPair
+  case class CharUnit[A : CharGen](a: A, length: Interval[Int])
 
-  extension (self: (Int, Option[Int]))
-    def +(that: (Int, Option[Int])): (Int, Option[Int]) =
-      val upperOption =
-        for
-          x <- self._2
-          y <- that._2
-        yield x + y
-      (self._1 + that._1, upperOption)
-  end extension
-
-  def toInterval(pair: (Int, Option[Int])): Interval[Int] =
-    val (lower, upperOption) = pair
-    upperOption match
-      case Some(upper) => Interval.closed(lower, upper)
-      case _ => Interval.atOrAbove(lower)
-
-  case class CharUnit[A : CharGen](a: A, length: Interval[Int]):
-    def gen[F[_] : Monad](max: Int): StateT[F, Random[F], String] =
-      val (lower, upperOption) = toPair(length)
-      for
-        len <- between(lower, upperOption.getOrElse(lower max max) + 1)
-        chars <- List.fill(len)(a.next[F]).sequence
-      yield chars.mkString
-
-  case class PasswordGen[A : CharGen](units: NonEmptyList[CharUnit[A]], length: Interval[Int]):
-    val unitLength = units.tail.foldLeft(toPair(units.head.length)) {
-      (acc, unit) => acc + toPair(unit.length)
-    }
-    val (unitLower, unitUpperOption) = unitLength
-    val (lower, upperOption) = toPair(toInterval(unitLength).intersect(length))
-    val max = 128
-    val unitsV = units.toNev.toVector
-
-    def unitLength[F[_] : Monad, A : CharGen](units: Vector[CharUnit[A]], buffer: Int): StateT[F, Random[F], Map[CharUnit[A], Int]] =
-      Monad[[A] =>> StateT[F, Random[F], A]].tailRecM((units, buffer, Map.empty[CharUnit[A], Int])) {
-        case (units, buffer, map) =>
-          if units.isEmpty then Monad[[A] =>> StateT[F, Random[F], A]].pure(Right(map))
-          else
-            for
-              index <- nextIntBounded[F](units.size)
-              (left, right) = units.splitAt(index)
-              unit = right.head
-              (lower, upperOption) = toPair(unit.length)
-              u = lower + buffer
-              u2 = upperOption.map(_ min u).getOrElse(u)
-              l <- between(lower, u2 + 1)
-            yield Left(left ++ right.tail, buffer - (l - lower), map.+(unit -> l))
-      }
-
-
-
-
-
-
-
-
-  val list: List[Interval[Int]] = List(Interval.atOrAbove(8), Interval.atOrBelow(10), Interval.closed(7, 13))
-
-  println(CharUnit("abcdefgh", Interval.closed(6, 20)).gen(128).runA(IdRandom(System.currentTimeMillis())))
 
   case class CharUnitState[F[_], A](random: Random[F], a: A, consecutive: Int, step: Int)
-  //def next[F[_] : Monad](a: String, consecutive: Option[Int], replace: Boolean): StateT[F, CharUnitState[F, String], Char] = StateT { state =>
-  //}
 
 
-  println(Vector(1, 2, 3, 4).splitAt(0))
-  println(Vector(1, 2, 3, 4).splitAt(1))
-  println(Vector(1, 2, 3, 4).splitAt(2))
-  println(Vector(1, 2, 3, 4).splitAt(3))
-  println(Vector(1, 2, 3, 4).splitAt(4))
-  println(Vector(1, 2, 3, 4).splitAt(5))
-
+  println(lengths[Id, Int](Interval.above(100), Map(
+    1 -> Interval.closed(50, 60),
+    2 -> Interval.atOrBelow(50),
+    3 -> Interval.closed(2, 10)
+  )).map(_.runA(IdRandom(System.currentTimeMillis()))))
 
   // -----------------------------
 
-  /**
-   * 最大长度剩余量
-   * 总长度10
-   * 0-5，0-2，0-3，0-1
-   */
-  def lengths[F[_] : Monad, K : Order](length: Interval[Int], elements: Map[K, Interval[Int]])
-  : Either[NonEmptyList[Error], StateT[F, Random[F], Map[K, Int]]] =
-    val elementList = elements.toList
-    NonEmptyList.fromList(elementList) match
-      case Some(nel) => nel.traverse { case (k, interval) => checkLength(interval).map((k, _)).toValidatedNel }.toEither.flatMap { nel =>
-        val map: NonEmptyMap[K, (Int, Option[Int])] = nel.toNem
+  type LengthInterval = (Int, Option[Int])
+  type BoundedLengthInterval = (Int, Int)
 
-        ???
+  def lengths[F[_] : Monad, K : Order](length: Interval[Int], elementIntervalMap: Map[K, Interval[Int]])
+  : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
+    for
+      lengthInterval <- checkLength(length)
+      elementIntervals <- nonEmpty(elementIntervalMap.toList, "elements")
+      elementLengthIntervals <- elementIntervals.traverse {
+        case (k, interval) => checkLength(interval).map((k, _)).toValidated
+      }.toEither
+      globalLengthInterval <- intersect(lengthInterval, sum(elementLengthIntervals.map(_._2)), "intersect interval")
+    yield
+      Monad[[A] =>> StateT[F, Random[F], A]].tailRecM(
+        (elementLengthIntervals.toList, globalLengthInterval, Map.empty[K, Int])
+      ) { case (remain, global, map) =>
+        if remain.isEmpty then map.asRight.pure else
+          for
+            index <- nextIntBounded[F](remain.length)
+            (left, right) = remain.splitAt(index)
+            (k, current) = right.head
+            nextRemain = left ::: right.tail
+            remainOption = sum(nextRemain.map(_._2))
+            currentLengthInterval = calculateLengthInterval(current, global, remainOption)
+            len <- between(currentLengthInterval._1, currentLengthInterval._2 + 1)
+          yield (nextRemain, remainLengthInterval(len, global, remainOption), map + (k -> len)).asLeft
       }
-      case _ => NonEmptyList.one(CollectionEmptyError("elements")).asLeft[StateT[F, Random[F], Map[K, Int]]]
 
   def checkLowerBound(lowerBound: Bound[Int]): Either[Error, Int] =
     val label = "lower bound"
@@ -160,10 +101,63 @@ object PasswordApp extends App:
       case Unbound() => none[Int].asRight[Error]
       case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
 
-  type LengthInterval = (Int, Option[Int])
-
   def checkLength(length: Interval[Int]): Either[Error, LengthInterval] =
     for
       lower <- checkLowerBound(length.lowerBound)
       upperOption <- checkUpperBound(length.upperBound, lower)
     yield (lower, upperOption)
+
+  def intersect(i: LengthInterval, o: LengthInterval, label: => String): Either[Error, BoundedLengthInterval] =
+    val (iLower, iUpperOption) = i
+    val (oLower, oUpperOption) = o
+    val lower = iLower max oLower
+    (iUpperOption, oUpperOption) match
+      case (Some(iUpper), Some(oUpper)) =>
+        val upper = iUpper min oUpper
+        if lower <= upper then (lower, upper).asRight[Error]
+        else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+      case (Some(iUpper), _) =>
+        if lower <= iUpper then (lower, iUpper).asRight[Error]
+        else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+      case (_, Some(oUpper)) => (lower, oUpper).asRight[Error]
+      case _ => UnboundError(label).asLeft[BoundedLengthInterval]
+  end intersect
+
+  def sum(head: LengthInterval, tail: List[LengthInterval]): LengthInterval = tail.foldLeft(head) {
+    case ((accLower, accUpperOption), (lower, upperOption)) =>
+      (accLower + lower, accUpperOption.flatMap(accUpper => upperOption.map(accUpper + _)))
+  }
+
+  def sum(list: NonEmptyList[LengthInterval]): LengthInterval = sum(list.head, list.tail)
+
+  def sum(list: List[LengthInterval]): Option[LengthInterval] = list match
+    case head :: tail => sum(head, tail).some
+    case _ => none[LengthInterval]
+
+  def calculateLengthInterval(current: LengthInterval, global: BoundedLengthInterval, remainOption: Option[LengthInterval])
+  : BoundedLengthInterval =
+    val (currentLower, currentUpperOption) = current
+    val (globalLower, globalUpper) = global
+    val (remainLower, remainUpperOption) = remainOption match
+      case Some((rLower, rUpperOption)) => (rLower, rUpperOption)
+      case None => (0, 0.some)
+    val lower = remainUpperOption match
+      case Some(remainUpper) if remainUpper < globalLower => currentLower max (globalLower - remainUpper)
+      case _ => currentLower
+    val upper = currentUpperOption match
+      case Some(currentUpper) => currentUpper min (globalUpper - remainLower)
+      case _ => globalUpper - remainLower
+    (lower, upper)
+
+  def remainLengthInterval(length: Int, global: BoundedLengthInterval, remainOption: Option[LengthInterval])
+  : BoundedLengthInterval =
+    remainOption match
+      case None => (0, 0)
+      case Some(remainLower, remainUpperOption) =>
+        val (globalLower, globalUpper) = global
+        val lower = (globalLower - length) max remainLower
+        val upper = remainUpperOption match
+          case Some(remainUpper) => (globalUpper - length) min remainUpper
+          case _ => globalUpper - length
+        (lower, upper)
+  end remainLengthInterval
