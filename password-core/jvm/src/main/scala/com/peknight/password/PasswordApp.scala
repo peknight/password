@@ -14,7 +14,8 @@ import com.peknight.cats.ext.monad.transformer.writer.WriterIdT
 import com.peknight.error.collection.CollectionEmptyError
 import com.peknight.error.spire.math.IntervalEmptyError
 import com.peknight.error.spire.math.interval.{BoundEmptyError, UnboundError}
-import com.peknight.error.{Error, UndefinedError}
+import com.peknight.error.std.UndefinedError
+import com.peknight.error.Error
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.random.state.*
@@ -29,6 +30,7 @@ import scala.compiletime.{constValue, erasedValue}
 
 object PasswordApp extends App:
 
+  // ~ ！ _ @ . # * $ ^ &
   trait CharGen[A]:
     def next[F[_] : Monad](a: A): StateT[F, Random[F], Char]
   end CharGen
@@ -97,7 +99,7 @@ object PasswordApp extends App:
   def checkUpperBound(upperBound: Bound[Int], lower: Int): Either[Error, Option[Int]] =
     val label = "upper bound"
     upperBound match
-      case bound: ValueBound[Int] => atOrAbove(bound.get(false), label, lower).map(_.some)
+      case bound: ValueBound[Int] => atOrAbove(bound.get(false), lower, label).map(_.some)
       case Unbound() => none[Int].asRight[Error]
       case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
 
@@ -115,10 +117,10 @@ object PasswordApp extends App:
       case (Some(iUpper), Some(oUpper)) =>
         val upper = iUpper min oUpper
         if lower <= upper then (lower, upper).asRight[Error]
-        else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+        else IntervalEmptyError(label, (i, o), "交集不能为空！").asLeft[BoundedLengthInterval]
       case (Some(iUpper), _) =>
         if lower <= iUpper then (lower, iUpper).asRight[Error]
-        else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+        else IntervalEmptyError(label, (i, o), "交集不能为空！").asLeft[BoundedLengthInterval]
       case (_, Some(oUpper)) => (lower, oUpper).asRight[Error]
       case _ => UnboundError(label).asLeft[BoundedLengthInterval]
   end intersect
