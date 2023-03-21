@@ -18,9 +18,10 @@ import com.peknight.error.collection.CollectionEmptyError
 import com.peknight.error.spire.math.IntervalEmptyError
 import com.peknight.error.spire.math.interval.{BoundEmpty, BoundEmptyError, UnboundError}
 import com.peknight.error.std.UndefinedError
+import com.peknight.generic.migration.instances.id.given
 import com.peknight.random.Random
+import com.peknight.random.generic.state.*
 import com.peknight.random.id.Random as IdRandom
-import com.peknight.random.state.*
 import com.peknight.spire.ext.syntax.bound.get
 import com.peknight.validation.collection.list.either.*
 import com.peknight.validation.spire.math.interval.either.*
@@ -83,7 +84,7 @@ object PasswordApp extends App:
       ) { case (remain, global, map) =>
         if remain.isEmpty then map.asRight.pure else
           for
-            index <- nextIntBounded[F](remain.length)
+            index <- nextIntBounded[F, Random[F]](remain.length)
             (left, right) = remain.splitAt(index)
             (k, current) = right.head
             nextRemain = left ::: right.tail
