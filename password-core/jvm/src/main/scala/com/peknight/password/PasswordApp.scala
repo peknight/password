@@ -6,22 +6,25 @@ import cats.syntax.either.*
 import cats.syntax.flatMap.*
 import cats.syntax.functor.*
 import cats.syntax.option.*
+import cats.syntax.show.*
 import cats.syntax.traverse.*
 import cats.syntax.validated.*
 import cats.syntax.writer.*
-import cats.{FlatMap, Functor, Id, Monad, Order, Semigroup}
+import cats.{FlatMap, Functor, Id, Monad, Order, Semigroup, Show}
 import com.peknight.cats.ext.monad.transformer.writer.WriterIdT
+import com.peknight.error.Error
+import com.peknight.error.Error.{SingleError, StandardError}
 import com.peknight.error.collection.CollectionEmptyError
 import com.peknight.error.spire.math.IntervalEmptyError
-import com.peknight.error.spire.math.interval.{BoundEmptyError, UnboundError}
+import com.peknight.error.spire.math.interval.{BoundEmpty, BoundEmptyError, UnboundError}
 import com.peknight.error.std.UndefinedError
-import com.peknight.error.Error
 import com.peknight.random.Random
 import com.peknight.random.id.Random as IdRandom
 import com.peknight.random.state.*
 import com.peknight.spire.ext.syntax.bound.get
 import com.peknight.validation.collection.list.either.*
 import com.peknight.validation.spire.math.interval.either.*
+import com.peknight.validation.traverse.either.*
 import spire.math.*
 import spire.math.interval.*
 
@@ -64,14 +67,15 @@ object PasswordApp extends App:
   type LengthInterval = (Int, Option[Int])
   type BoundedLengthInterval = (Int, Int)
 
-  def lengths[F[_] : Monad, K : Order](length: Interval[Int], elementIntervalMap: Map[K, Interval[Int]])
+
+  def lengths[F[_] : Monad, K : Order : Show](length: Interval[Int], elementIntervalMap: Map[K, Interval[Int]])
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
     for
       lengthInterval <- checkLength(length)
       elementIntervals <- nonEmpty(elementIntervalMap.toList, "elements")
-      elementLengthIntervals <- elementIntervals.traverse {
-        case (k, interval) => checkLength(interval).map((k, _)).toValidated
-      }.toEither
+      elementLengthIntervals <- traverse(elementIntervals, "elementIntervals") {
+        case (k, interval) => checkLength(interval).map((k, _))
+      }
       globalLengthInterval <- intersect(lengthInterval, sum(elementLengthIntervals.map(_._2)), "intersect interval")
     yield
       Monad[[A] =>> StateT[F, Random[F], A]].tailRecM(
@@ -89,40 +93,44 @@ object PasswordApp extends App:
           yield (nextRemain, remainLengthInterval(len, global, remainOption), map + (k -> len)).asLeft
       }
 
-  def checkLowerBound(lowerBound: Bound[Int]): Either[Error, Int] =
-    val label = "lower bound"
+  def checkLowerBound(lowerBound: Bound[Int]): Either[SingleError, Int] =
+    val label = "lowerBound"
     lowerBound match
       case bound: ValueBound[Int] => nonNegative(bound.get(true), label)
-      case Unbound() => 0.asRight[Error]
+      case Unbound() => 0.asRight[SingleError]
       case EmptyBound() => BoundEmptyError(label).asLeft[Int]
 
-  def checkUpperBound(upperBound: Bound[Int], lower: Int): Either[Error, Option[Int]] =
-    val label = "upper bound"
+  def checkUpperBound(upperBound: Bound[Int], lower: Int): Either[SingleError, Option[Int]] =
+    val label = "upperBound"
     upperBound match
       case bound: ValueBound[Int] => atOrAbove(bound.get(false), lower, label).map(_.some)
-      case Unbound() => none[Int].asRight[Error]
+      case Unbound() => none[Int].asRight[SingleError]
       case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
 
-  def checkLength(length: Interval[Int]): Either[Error, LengthInterval] =
-    for
-      lower <- checkLowerBound(length.lowerBound)
-      upperOption <- checkUpperBound(length.upperBound, lower)
-    yield (lower, upperOption)
+  def checkLength(length: Interval[Int]): Either[SingleError, LengthInterval] =
+    val res =
+      for
+        lower <- checkLowerBound(length.lowerBound)
+        upperOption <- checkUpperBound(length.upperBound, lower)
+      yield (lower, upperOption)
+    res.left.map(length *: _)
 
-  def intersect(i: LengthInterval, o: LengthInterval, label: => String): Either[Error, BoundedLengthInterval] =
+  def intersect(i: LengthInterval, o: LengthInterval, label: => String): Either[SingleError, BoundedLengthInterval] =
     val (iLower, iUpperOption) = i
     val (oLower, oUpperOption) = o
     val lower = iLower max oLower
-    (iUpperOption, oUpperOption) match
-      case (Some(iUpper), Some(oUpper)) =>
-        val upper = iUpper min oUpper
-        if lower <= upper then (lower, upper).asRight[Error]
-        else IntervalEmptyError(label, (i, o), "交集不能为空！").asLeft[BoundedLengthInterval]
-      case (Some(iUpper), _) =>
-        if lower <= iUpper then (lower, iUpper).asRight[Error]
-        else IntervalEmptyError(label, (i, o), "交集不能为空！").asLeft[BoundedLengthInterval]
-      case (_, Some(oUpper)) => (lower, oUpper).asRight[Error]
-      case _ => UnboundError(label).asLeft[BoundedLengthInterval]
+    val res =
+      (iUpperOption, oUpperOption) match
+        case (Some(iUpper), Some(oUpper)) =>
+          val upper = iUpper min oUpper
+          if lower <= upper then (lower, upper).asRight[SingleError]
+          else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+        case (Some(iUpper), _) =>
+          if lower <= iUpper then (lower, iUpper).asRight[SingleError]
+          else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+        case (_, Some(oUpper)) => (lower, oUpper).asRight[SingleError]
+        case _ => UnboundError(label).asLeft[BoundedLengthInterval]
+    res.left.map((i, o) *: _)
   end intersect
 
   def sum(head: LengthInterval, tail: List[LengthInterval]): LengthInterval = tail.foldLeft(head) {
