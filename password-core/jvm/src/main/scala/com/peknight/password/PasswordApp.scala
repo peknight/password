@@ -9,7 +9,7 @@ object PasswordApp extends App:
 
   // ~ ！ _ @ . # * $ ^ &
 
-  println(allocate[Id, Int](Interval.above(100), Map(
+  println(allocate[Id, Int](Interval.above(119), Map(
     1 -> Interval.closed(50, 60),
     2 -> Interval.atOrBelow(50),
     3 -> Interval.closed(2, 10)

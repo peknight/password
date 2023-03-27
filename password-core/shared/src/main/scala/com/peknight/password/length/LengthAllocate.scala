@@ -69,26 +69,23 @@ object LengthAllocate:
   private[this] def intersect(i: LengthInterval, o: LengthInterval, label: => String)
   : Either[SingleError, BoundedLengthInterval] =
     val lower = i.lower max o.lower
-    val res =
+    val upperOption =
       (i.upper, o.upper) match
-        case (Some(iUpper), Some(oUpper)) =>
-          val upper = iUpper min oUpper
-          if lower <= upper then BoundedLengthInterval(lower, upper).asRight[SingleError]
-          else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
-        case (Some(iUpper), _) =>
-          if lower <= iUpper then BoundedLengthInterval(lower, iUpper).asRight[SingleError]
-          else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
-        case (_, Some(oUpper)) => BoundedLengthInterval(lower, oUpper).asRight[SingleError]
-        case _ => UnboundError(label).asLeft[BoundedLengthInterval]
-    res.left.map((i, o) *: _)
+        case (Some(iUpper), Some(oUpper)) => (iUpper min oUpper).some
+        case (Some(iUpper), _) => iUpper.some
+        case (_, Some(oUpper)) => oUpper.some
+        case _ => none[Int]
+    upperOption.fold(UnboundError(label).asLeft[BoundedLengthInterval])(upper =>
+      if lower <= upper then BoundedLengthInterval(lower, upper).asRight[SingleError]
+      else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+    ).left.map((i, o) *: _)
   end intersect
 
-  private[this] def sum(head: LengthInterval, tail: List[LengthInterval]): LengthInterval = tail.foldLeft(head)(
-    (acc, current) => LengthInterval(
+  private[this] def sum(head: LengthInterval, tail: List[LengthInterval]): LengthInterval =
+    tail.foldLeft(head)((acc, current) => LengthInterval(
       acc.lower + current.lower,
       acc.upper.flatMap(accUpper => current.upper.map(accUpper + _))
-    )
-  )
+    ))
 
   private[this] def sum(list: NonEmptyList[LengthInterval]): LengthInterval = sum(list.head, list.tail)
 
