@@ -27,7 +27,7 @@ object LengthAllocate:
       elementLengthIntervals <- traverse(elementIntervals, "elementIntervals") {
         case (k, interval) => checkLength(interval).map((k, _))
       }
-      globalLengthInterval <- intersect(lengthInterval, sum(elementLengthIntervals.map(_._2)), "intersectInterval")
+      globalLengthInterval <- intersect(lengthInterval, sum(elementLengthIntervals.map(_._2)))
     yield
       Monad[[A] =>> StateT[F, Random[F], A]].tailRecM(
         (elementLengthIntervals.toList, globalLengthInterval, Map.empty[K, Int])
@@ -58,7 +58,7 @@ object LengthAllocate:
       case Unbound() => none[Int].asRight[SingleError]
       case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
 
-  private[this] def checkLength(length: Interval[Int]): Either[SingleError, LengthInterval] =
+  def checkLength(length: Interval[Int]): Either[SingleError, LengthInterval] =
     val res =
       for
         lower <- checkLowerBound(length.lowerBound)
@@ -66,8 +66,7 @@ object LengthAllocate:
       yield LengthInterval(lower, upperOption)
     res.left.map(length *: _)
 
-  private[this] def intersect(i: LengthInterval, o: LengthInterval, label: => String)
-  : Either[SingleError, BoundedLengthInterval] =
+  def intersect(i: LengthInterval, o: LengthInterval): Either[SingleError, BoundedLengthInterval] =
     val lower = i.lower max o.lower
     val upperOption =
       (i.upper, o.upper) match
@@ -75,9 +74,9 @@ object LengthAllocate:
         case (Some(iUpper), _) => iUpper.some
         case (_, Some(oUpper)) => oUpper.some
         case _ => none[Int]
-    upperOption.fold(UnboundError(label).asLeft[BoundedLengthInterval])(upper =>
+    upperOption.fold(UnboundError("intersectUpperBound").asLeft[BoundedLengthInterval])(upper =>
       if lower <= upper then BoundedLengthInterval(lower, upper).asRight[SingleError]
-      else IntervalEmptyError(label).asLeft[BoundedLengthInterval]
+      else IntervalEmptyError("intersectInterval").asLeft[BoundedLengthInterval]
     ).left.map((i, o) *: _)
   end intersect
 
