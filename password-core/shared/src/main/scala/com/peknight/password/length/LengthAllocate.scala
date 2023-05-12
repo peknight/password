@@ -5,9 +5,9 @@ import cats.data.{NonEmptyList, StateT}
 import cats.syntax.applicative.*
 import cats.syntax.either.*
 import cats.syntax.option.*
-import com.peknight.error.Error.SingleError
 import com.peknight.error.spire.math.IntervalEmptyError
 import com.peknight.error.spire.math.interval.{BoundEmptyError, UnboundError}
+import com.peknight.error.std.Error
 import com.peknight.password.domain.{BoundedLengthInterval, LengthInterval}
 import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
@@ -20,7 +20,7 @@ import spire.math.interval.{Bound, EmptyBound, Unbound, ValueBound}
 
 object LengthAllocate:
   def allocate[F[_] : Monad, K](length: Interval[Int], elementLengths: Map[K, Interval[Int]])
-  : Either[SingleError, StateT[F, Random[F], Map[K, Int]]] =
+  : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
     for
       lengthInterval <- checkLength(length)
       elementIntervals <- nonEmpty(elementLengths.toList, "elementLengths")
@@ -44,21 +44,21 @@ object LengthAllocate:
           yield (nextRemain, remainLengthInterval(len, global, remainOption), map + (k -> len)).asLeft
       }
 
-  private[this] def checkLowerBound(lowerBound: Bound[Int]): Either[SingleError, Int] =
+  private[this] def checkLowerBound(lowerBound: Bound[Int]): Either[Error, Int] =
     val label = "lowerBound"
     lowerBound match
       case bound: ValueBound[Int] => nonNegative(bound.get(true), label)
-      case Unbound() => 0.asRight[SingleError]
+      case Unbound() => 0.asRight[Error]
       case EmptyBound() => BoundEmptyError(label).asLeft[Int]
 
-  private[this] def checkUpperBound(upperBound: Bound[Int], lower: Int): Either[SingleError, Option[Int]] =
+  private[this] def checkUpperBound(upperBound: Bound[Int], lower: Int): Either[Error, Option[Int]] =
     val label = "upperBound"
     upperBound match
       case bound: ValueBound[Int] => atOrAbove(bound.get(false), lower, label).map(_.some)
-      case Unbound() => none[Int].asRight[SingleError]
+      case Unbound() => none[Int].asRight[Error]
       case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
 
-  def checkLength(length: Interval[Int]): Either[SingleError, LengthInterval] =
+  def checkLength(length: Interval[Int]): Either[Error, LengthInterval] =
     val res =
       for
         lower <- checkLowerBound(length.lowerBound)
@@ -66,7 +66,7 @@ object LengthAllocate:
       yield LengthInterval(lower, upperOption)
     res.left.map(length *: _)
 
-  def intersect(i: LengthInterval, o: LengthInterval): Either[SingleError, BoundedLengthInterval] =
+  def intersect(i: LengthInterval, o: LengthInterval): Either[Error, BoundedLengthInterval] =
     val lower = i.lower max o.lower
     val upperOption =
       (i.upper, o.upper) match
@@ -75,7 +75,7 @@ object LengthAllocate:
         case (_, Some(oUpper)) => oUpper.some
         case _ => none[Int]
     upperOption.fold(UnboundError("intersectUpperBound").asLeft[BoundedLengthInterval])(upper =>
-      if lower <= upper then BoundedLengthInterval(lower, upper).asRight[SingleError]
+      if lower <= upper then BoundedLengthInterval(lower, upper).asRight[Error]
       else IntervalEmptyError("intersectInterval").asLeft[BoundedLengthInterval]
     ).left.map((i, o) *: _)
   end intersect
