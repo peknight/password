@@ -20,7 +20,6 @@ lazy val password = (project in file("."))
     passwordCore.jvm,
     passwordCore.js,
   )
-  .enablePlugins(JavaAppPackaging)
   .settings(commonSettings)
   .settings(
     name := "password",
