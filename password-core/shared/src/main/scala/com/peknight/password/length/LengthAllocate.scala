@@ -34,13 +34,17 @@ object LengthAllocate:
       ) { case (remain, global, map) =>
         if remain.isEmpty then map.asRight.pure else
           for
-            index <- nextIntBounded[F](remain.length)
+            index <- if remain.length == 1 then StateT.pure[F, Random[F], Int](0) else nextIntBounded[F](remain.length)
             (left, right) = remain.splitAt(index)
             (k, current) = right.head
             nextRemain = left ::: right.tail
             remainOption = sum(nextRemain.map(_._2))
             currentLengthInterval = calculateLengthInterval(current, global, remainOption)
-            len <- between(currentLengthInterval.lower, currentLengthInterval.upper + 1)
+            len <-
+              if currentLengthInterval.lower == currentLengthInterval.upper then
+                StateT.pure[F, Random[F], Int](currentLengthInterval.lower)
+              else
+                between(currentLengthInterval.lower, currentLengthInterval.upper + 1)
           yield (nextRemain, remainLengthInterval(len, global, remainOption), map + (k -> len)).asLeft
       }
 
