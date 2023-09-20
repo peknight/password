@@ -12,13 +12,53 @@ import com.peknight.random.Random
 import com.peknight.random.state.{between, nextIntBounded}
 import com.peknight.spire.ext.syntax.bound.get
 import com.peknight.validation.collection.list.either.nonEmpty
-import com.peknight.validation.spire.math.interval.either.{atOrAbove, nonNegative}
+import com.peknight.validation.spire.math.interval.either.{atOrAbove, nonNegative, positive}
 import com.peknight.validation.traverse.either.traverse
 import spire.math.Interval
 import spire.math.interval.{Bound, EmptyBound, Unbound, ValueBound}
 
 object LengthAllocate:
-  def allocate[F[_] : Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
+
+  case class Consecutive(max: Int, step: Int)
+  case class CharsetOption[+C <: Iterable[Char]](chars: C, length: Interval[Int], repeat: Boolean,
+                                                 consecutive: Option[Consecutive])
+  case class PasswordOption[K, C <: Iterable[Char]](length: Interval[Int], charsets: Map[K, CharsetOption[C]])
+
+  def generate[F[_]: Monad, K, C <: Iterable[Char]](passwordOption: PasswordOption[K, C])
+  : Either[Error, StateT[F, Random[F], String]] =
+    for
+      global <- checkLength(passwordOption.length)
+      elements <- nonEmpty(passwordOption.charsets.toList, "charsets")
+    yield
+      ???
+    ???
+
+  def checkCharsetOption[C <: Iterable[Char]](charsetOption: CharsetOption[C]): Either[Error, LengthInterval] =
+    for
+      length <- checkLength(charsetOption.length)
+      chars <- nonEmpty(charsetOption.chars.toList, "chars")
+      charSize = chars.length
+      consecutiveOption <- checkConsecutive(charsetOption)
+      length <- consecutiveOption match
+        case Some(consecutive) if charsetOption.repeat =>
+          ???
+        case Some(consecutive) => ???
+        case None if charsetOption.repeat => length.asRight[Error]
+        case _ =>
+          val charLength = LengthInterval.atOrBelow(chars.length)
+          checkLength(intersect(length, charLength)).left.map((length, charLength) *: _)
+    yield
+      length
+
+  def checkConsecutive[C <: Iterable[Char]](charsetOption: CharsetOption[C]): Either[Error, Option[Consecutive]] =
+    traverse(charsetOption.consecutive, "consecutive"){ consecutive =>
+      for
+        _ <- positive(consecutive.max, "max")
+        _ <- nonNegative(consecutive.step, "step")
+      yield consecutive
+    }
+
+  def allocate[F[_]: Monad, K](global: Interval[Int], elements: Map[K, Interval[Int]])
   : Either[Error, StateT[F, Random[F], Map[K, Int]]] =
     for
       global <- checkLength(global)
@@ -111,7 +151,7 @@ object LengthAllocate:
       case Unbound() => none[Int].asRight[Error]
       case EmptyBound() => BoundEmptyError(label).asLeft[Option[Int]]
 
-  def checkLength(length: Interval[Int]): Either[Error, LengthInterval] =
+  private[this] def checkLength(length: Interval[Int]): Either[Error, LengthInterval] =
     val res =
       for
         lower <- checkLowerBound(length.lowerBound)
@@ -119,7 +159,7 @@ object LengthAllocate:
       yield LengthInterval(lower, upperOption)
     res.left.map(length *: _)
 
-  def checkLength(length: LengthInterval): Either[Error, LengthInterval] =
+  private[this] def checkLength(length: LengthInterval): Either[Error, LengthInterval] =
     val res =
       for
         lower <- nonNegative(length.lower, "lowerBound")
@@ -130,7 +170,6 @@ object LengthAllocate:
     res.left.map(length *: _)
 
   private[this] def checkBounded(length: LengthInterval): Either[Error, LengthInterval] =
-    length.upperOption.fold(UnboundError("upperBound").asLeft[LengthInterval]) {
-      upper => length.asRight[Error]
-    }
+    length.upperOption.fold(UnboundError("upperBound").asLeft[LengthInterval])(_ => length.asRight[Error])
+
 end LengthAllocate

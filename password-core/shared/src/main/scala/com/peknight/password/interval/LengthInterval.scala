@@ -17,4 +17,5 @@ object LengthInterval:
   def apply(lower: Int, upperOption: Option[Int]): LengthInterval =
     upperOption.fold(UnboundedLengthInterval(lower))(upper => BoundedLengthInterval(lower, upper))
   val empty: LengthInterval = BoundedLengthInterval(0, 0)
+  def atOrBelow(upper: Int): LengthInterval = BoundedLengthInterval(0, upper)
 end LengthInterval
