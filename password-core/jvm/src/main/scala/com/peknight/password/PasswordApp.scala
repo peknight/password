@@ -1,8 +1,8 @@
 package com.peknight.password
 
 import cats.Id
-import com.peknight.password.interval.*
-import com.peknight.password.length.LengthAllocate.*
+import com.peknight.password.gen.charsets.CharsetsGen.{allocate, generate}
+import com.peknight.password.gen.charsets.option.{CharsetOption, Consecutive, GenOption}
 import com.peknight.random.id.{LinearCongruentialRandom, Random as IdRandom}
 import spire.math.Interval
 
@@ -20,14 +20,14 @@ object PasswordApp extends App:
     3 -> Interval.closed(2, 10)
   )).map(_.runA(r)))
 
-  println(generate(StringGenOption(
-    Interval.point(16),
+  println(generate(GenOption(
     Map(
-      "num" -> CharsetOption((0 to 9).mkString, Interval.above(0), true),
-      "lower" -> CharsetOption(('a' to 'z').mkString, Interval.above(0), true),
-      "upper" -> CharsetOption(('A' to 'Z').mkString, Interval.above(0), true),
-      "special" -> CharsetOption("~!_@.#*$^&", Interval.above(0), true)
+      "num" -> CharsetOption((0 to 9).mkString, Interval.above(0)),
+      "lower" -> CharsetOption(('a' to 'z').mkString, Interval.above(0)),
+      "upper" -> CharsetOption(('A' to 'Z').mkString, Interval.above(0)),
+      "special" -> CharsetOption("~!_@.#*$^&", Interval.above(0), endsWith = false)
     ),
+    Interval.point(20),
     Some(Consecutive(1, 1)),
     7
   )).runA(r))
