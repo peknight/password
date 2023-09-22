@@ -30,12 +30,8 @@ lazy val passwordCore = (crossProject(JSPlatform, JVMPlatform) in file("password
   .settings(
     name := "password-core",
     libraryDependencies ++= Seq(
-      "com.peknight" %%% "random-core" % pekRandomVersion,
-      "com.peknight" %%% "validation-spire" % pekValidationVersion,
-      "com.peknight" %%% "spire-ext" % pekSpireExtVersion,
+      "com.peknight" %%% "gen-string" % pekGenVersion,
     ),
   )
 
-val pekRandomVersion = "0.1.0-SNAPSHOT"
-val pekValidationVersion = "0.1.0-SNAPSHOT"
-val pekSpireExtVersion = "0.1.0-SNAPSHOT"
+val pekGenVersion = "0.1.0-SNAPSHOT"

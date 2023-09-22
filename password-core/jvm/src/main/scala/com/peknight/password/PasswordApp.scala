@@ -1,8 +1,8 @@
 package com.peknight.password
 
 import cats.Id
-import com.peknight.password.gen.charsets.CharsetsGen.{allocate, generate}
-import com.peknight.password.gen.charsets.option.{CharsetOption, Consecutive, GenOption}
+import com.peknight.gen.string.StringGen.{allocate, generate}
+import com.peknight.gen.string.option.{CharsetOption, Consecutive, GenOption}
 import com.peknight.random.id.{LinearCongruentialRandom, Random as IdRandom}
 import spire.math.Interval
 
